@@ -1,0 +1,5 @@
+{
+  "name": "RxLens: AI Prescription Interpreter",
+  "description": "A high-safety AI microservice for interpreting handwritten medical prescriptions, identifying active ingredients, and finding generic alternatives with verified medical grounding.",
+  "requestFramePermissions": ["camera", "geolocation"]
+}
