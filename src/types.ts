@@ -34,6 +34,7 @@ export interface Pharmacy {
   distance?: string;
   rating?: number;
   phone?: string;
+  email?: string;
   mapsUrl: string;
   isOpen?: boolean;
 }

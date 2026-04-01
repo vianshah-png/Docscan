@@ -10,7 +10,7 @@ export async function findNearbyPharmacies(lat: number, lng: number): Promise<Ph
   // Step 1: Use Google Maps tool to find pharmacies and get grounding metadata
   const response = await ai.models.generateContent({
     model,
-    contents: `Find 5 nearby pharmacies near latitude ${lat}, longitude ${lng}. Provide their name, address, rating, phone number, and distance from this location.`,
+    contents: `Find 5 nearby pharmacies near latitude ${lat}, longitude ${lng}. For each, provide their name, full address, rating, phone number (with country code), distance from this location, and official contact email if available.`,
     config: {
       tools: [{ googleSearch: {} }]
     }
@@ -27,7 +27,19 @@ export async function findNearbyPharmacies(lat: number, lng: number): Promise<Ph
   const jsonResponse = await ai.models.generateContent({
     model,
     contents: [
-      { text: `Based on the following information about nearby pharmacies, provide a JSON list of the top 5 pharmacies. Include name, address, distance (as a string like "0.5 miles"), rating (number), phone (string), and mapsUrl. Sort them by distance (closest first).\n\nInformation:\n${textResponse}\n\nMetadata:\n${JSON.stringify(groundingMetadata)}` }
+      { text: `Based on the following information about nearby pharmacies, provide a JSON list of the top 5 pharmacies. 
+      Include name, address, distance (as a string like "0.5 km"), rating (number), phone (string with country code), email (string, or null if not found).
+      
+      For mapsUrl, generate a direct Google Maps search link using this format: 
+      'https://www.google.com/maps/search/?api=1&query=PHARMACY_NAME+ADDRESS' (replacing spaces with +).
+      
+      Verify phone numbers from the metadata to ensure accuracy.
+      
+      Information:
+      ${textResponse}
+      
+      Metadata:
+      ${JSON.stringify(groundingMetadata)}` }
     ],
     config: {
       responseMimeType: "application/json",
@@ -41,6 +53,7 @@ export async function findNearbyPharmacies(lat: number, lng: number): Promise<Ph
             distance: { type: Type.STRING },
             rating: { type: Type.NUMBER },
             phone: { type: Type.STRING },
+            email: { type: Type.STRING },
             mapsUrl: { type: Type.STRING },
             isOpen: { type: Type.BOOLEAN }
           },

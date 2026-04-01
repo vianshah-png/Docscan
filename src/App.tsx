@@ -283,12 +283,21 @@ export default function App() {
     const locationStr = userLocation ? ` (Location: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)})` : '';
     const message = `Hi, I'm inquiring about the availability of the following medicines: ${medsList}. Are they available at your pharmacy?${locationStr}`;
     
-    if (pharmacy.phone) {
-      const cleanPhone = pharmacy.phone.replace(/\D/g, '');
+    // Priority 1: WhatsApp if phone exists
+    if (pharmacy.phone && pharmacy.phone.trim() !== '') {
+      // Clean phone number: remove non-digits, but keep country code if it started with +
+      let cleanPhone = pharmacy.phone.replace(/\D/g, '');
+      // If it looks like a local number (e.g. 10 digits in India), we might need to prefix country code,
+      // but wa.me works best with the full international format.
+      // Gemini is instructed to provide country code now.
       return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-    } else {
-      return `mailto:?subject=Medicine Availability Inquiry&body=${encodeURIComponent(message)}`;
-    }
+    } 
+    
+    // Priority 2: Mailto with actual email if available
+    const emailRecipient = pharmacy.email || '';
+    const subject = encodeURIComponent("Medicine Availability Inquiry");
+    const body = encodeURIComponent(message);
+    return `mailto:${emailRecipient}?subject=${subject}&body=${body}`;
   };
 
   return (
