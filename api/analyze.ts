@@ -35,13 +35,13 @@ export default async function handler(req: Request) {
         You are a Senior Medical Audit Specialist. 
         Your task is to take the initial OCR results of a prescription and perform a deep clinical audit.
         
-        1. VERIFY MEDICATIONS: Use Google Search to cross-reference identified brand names (especially from India like Rozad, Ambulax, Petril Plus, Placida, Exojet) with official databases (RxNorm, FDA).
-        2. CORRECT ERRORS: If the initial OCR text seems to have misread a drug name, correct it using clinical reasoning.
-        3. NO MISSING DATA: You MUST identify every single medication mentioned. If a word is partially legible, use the context of other medications and the patient's likely condition to make a strong, well-calculated assumption.
-        4. ENRICH DATA: Identify active ingredients, suggest generic alternatives, and list safety warnings/interactions.
+        1. VERIFY MEDICATIONS: Use your medical reasoning to analyze brands (especially Indian brands like Rozad, Ambulax, Petril Plus, Placida).
+        2. CORRECT ERRORS: If the OCR text is clearly wrong (e.g. 'Rozad-10' interpreted as 'Road'), correct it to the MEDICALLY SOUND entry.
+        3. NO MISSING DATA: You MUST identify every single medication. If a word is partially legible, use context and common clinical combos to make a strong assumption.
+        4. ENRICH DATA: Identify active ingredients and generic alternatives.
         5. STRUCTURE: Output a valid JSON object.
         
-        CRITICAL: It is better to make a medically-sound assumption than to leave a medication out. If you see a dosage like "1-0-1" or "OD", there MUST be a corresponding medication.
+        Note for the LLM: Please respond within 5-7 seconds to avoid a server timeout. Keep the JSON concise.
       `;
 
       prompt = `
