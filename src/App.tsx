@@ -199,15 +199,13 @@ export default function App() {
       
       let fullOcrText = "";
       
-      // Stage 1: Fast OCR Scan (Streaming)
+      // Stage 1: Fast OCR Scan
       try {
-        const stream = analyzePrescriptionStream(base64);
-        for await (const chunk of stream) {
-          fullOcrText += chunk;
-          setStreamingText(prev => (prev + chunk).slice(-2000));
-        }
+        setStreamingText("[System] Starting OCR Scan...");
+        fullOcrText = await analyzePrescriptionStream(base64);
+        setStreamingText(fullOcrText.slice(-2000));
       } catch (err) {
-        console.warn("Streaming OCR failed, but continuing with deep analysis...", err);
+        console.warn("OCR failed, but continuing with deep analysis...", err);
       }
 
       setStep('searching');

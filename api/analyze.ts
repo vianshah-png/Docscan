@@ -5,149 +5,128 @@ export default async function handler(req: Request) {
     return new Response(JSON.stringify({ error: "Method Not Allowed" }), { status: 405 });
   }
 
-  const { image, ocrText, type } = await req.json();
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "API Key Not Found" }), { status: 500 });
-  }
-
   try {
+    const { image, ocrText, type } = await req.json();
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "API Key Not Found" }), { status: 500 });
+    }
+
     const client = new GoogleGenAI({ apiKey });
     const model = "gemini-2.5-flash";
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const encoder = new TextEncoder();
-          if (type === "stream") {
-              controller.enqueue(encoder.encode("[System] Starting OCR Scan...\n"));
-          } else {
-              controller.enqueue(encoder.encode("[System] Deep Clinical Audit starting (this may take up to 25s)...\n"));
-          }
+    let prompt = "";
+    let systemInstruction = "";
+    let responseMimeType = "text/plain";
+    let responseSchema: any = undefined;
 
-          let prompt = "";
-          let systemInstruction = "";
-          let responseMimeType = "text/plain";
-          let responseSchema: any = undefined;
+    if (type === "stream") {
+      prompt = `
+        Perform a high-fidelity OCR scan of this medical prescription. 
+        1. DECIPHER HANDWRITING: Carefully read every word.
+        2. LIST EVERYTHING: Patient details, Doctor details, Clinic info, and every single Medication with its dosage and frequency.
+        3. BE PRECISE: If a word is unclear, provide your best clinical guess based on common medical terms.
+        
+        Output raw text as you read it. Be extremely detailed.
+      `;
+    } else if (type === "audit") {
+      systemInstruction = `
+        You are a Senior Medical Audit Specialist. 
+        Your task is to take the initial OCR results of a prescription and perform a deep clinical audit.
+        
+        1. VERIFY MEDICATIONS: Use Google Search to cross-reference identified brand names (especially from India like Rozad, Ambulax, Petril Plus, Placida, Exojet) with official databases (RxNorm, FDA).
+        2. CORRECT ERRORS: If the initial OCR text seems to have misread a drug name, correct it using clinical reasoning.
+        3. NO MISSING DATA: You MUST identify every single medication mentioned. If a word is partially legible, use the context of other medications and the patient's likely condition to make a strong, well-calculated assumption.
+        4. ENRICH DATA: Identify active ingredients, suggest generic alternatives, and list safety warnings/interactions.
+        5. STRUCTURE: Output a valid JSON object.
+        
+        CRITICAL: It is better to make a medically-sound assumption than to leave a medication out. If you see a dosage like "1-0-1" or "OD", there MUST be a corresponding medication.
+      `;
 
-          if (type === "stream") {
-            prompt = `
-              Perform a high-fidelity OCR scan of this medical prescription. 
-              1. DECIPHER HANDWRITING: Carefully read every word.
-              2. LIST EVERYTHING: Patient details, Doctor details, Clinic info, and every single Medication with its dosage and frequency.
-              3. BE PRECISE: If a word is unclear, provide your best clinical guess based on common medical terms.
-              
-              Output raw text as you read it. Be extremely detailed.
-            `;
-          } else if (type === "audit") {
-            systemInstruction = `
-              You are a Senior Medical Audit Specialist. 
-              Your task is to take the initial OCR results of a prescription and perform a deep clinical audit.
-              
-              1. VERIFY MEDICATIONS: Use Google Search to cross-reference identified brand names (especially from India like Rozad, Ambulax, Petril Plus, Placida, Exojet) with official databases (RxNorm, FDA).
-              2. CORRECT ERRORS: If the initial OCR text seems to have misread a drug name, correct it using clinical reasoning.
-              3. NO MISSING DATA: You MUST identify every single medication mentioned. If a word is partially legible, use the context of other medications and the patient's likely condition to make a strong, well-calculated assumption.
-              4. ENRICH DATA: Identify active ingredients, suggest generic alternatives, and list safety warnings/interactions.
-              5. STRUCTURE: Output a valid JSON object.
-              
-              CRITICAL: It is better to make a medically-sound assumption than to leave a medication out. If you see a dosage like "1-0-1" or "OD", there MUST be a corresponding medication.
-            `;
+      prompt = `
+        Initial OCR Text:
+        ${ocrText}
+        
+        Image Context: (Provided as image)
+        
+        Perform a deep audit of the medications found in the OCR text and the image. 
+        Ensure NO medication is missed. If something looks like a medication but is unclear, use your medical knowledge to identify the most likely candidate.
+      `;
 
-            prompt = `
-              Initial OCR Text:
-              ${ocrText}
-              
-              Image Context: (Provided as image)
-              
-              Perform a deep audit of the medications found in the OCR text and the image. 
-              Ensure NO medication is missed. If something looks like a medication but is unclear, use your medical knowledge to identify the most likely candidate.
-            `;
-
-            responseMimeType = "application/json";
-            responseSchema = {
+      responseMimeType = "application/json";
+      responseSchema = {
+        type: "object",
+        properties: {
+          patientName: { type: "string" },
+          doctorName: { type: "string" },
+          doctorContact: { type: "string" },
+          clinicName: { type: "string" },
+          date: { type: "string" },
+          medications: {
+            type: "array",
+            items: {
               type: "object",
               properties: {
-                patientName: { type: "string" },
-                doctorName: { type: "string" },
-                doctorContact: { type: "string" },
-                clinicName: { type: "string" },
-                date: { type: "string" },
-                medications: {
+                drugName: { type: "string" },
+                dosage: { type: "string" },
+                frequency: { type: "string" },
+                confidence: { type: "number" },
+                activeIngredients: { type: "array", items: { type: "string" } },
+                alternatives: {
                   type: "array",
                   items: {
                     type: "object",
                     properties: {
-                      drugName: { type: "string" },
-                      dosage: { type: "string" },
-                      frequency: { type: "string" },
-                      confidence: { type: "number" },
-                      activeIngredients: { type: "array", items: { type: "string" } },
-                      alternatives: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            brandName: { type: "string" },
-                            manufacturer: { type: "string" },
-                            form: { type: "string" },
-                            strength: { type: "string" },
-                            isGeneric: { type: "boolean" }
-                          }
-                        }
-                      },
-                      safetyWarnings: { type: "array", items: { type: "string" } }
-                    },
-                    required: ["drugName", "dosage", "frequency"]
+                      brandName: { type: "string" },
+                      manufacturer: { type: "string" },
+                      form: { type: "string" },
+                      strength: { type: "string" },
+                      isGeneric: { type: "boolean" }
+                    }
                   }
                 },
-                overallConfidence: { type: "number" },
-                overallSafetyWarnings: { type: "array", items: { type: "string" } },
-                interactionRisks: { type: "array", items: { type: "string" } }
+                safetyWarnings: { type: "array", items: { type: "string" } }
               },
-              required: ["medications"]
-            };
-          }
-
-          const responseStream = await client.models.generateContentStream({
-            model,
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  { inlineData: { mimeType: "image/jpeg", data: image } }
-                ]
-              }
-            ],
-            config: {
-              systemInstruction: systemInstruction || undefined,
-              responseMimeType: responseMimeType as any,
-              responseSchema: responseSchema || undefined,
-              maxOutputTokens: 8192
+              required: ["drugName", "dosage", "frequency"]
             }
-          });
+          },
+          overallConfidence: { type: "number" },
+          overallSafetyWarnings: { type: "array", items: { type: "string" } },
+          interactionRisks: { type: "array", items: { type: "string" } }
+        },
+        required: ["medications"]
+      };
+    }
 
-          for await (const chunk of responseStream) {
-            if (chunk.text) {
-              controller.enqueue(encoder.encode(chunk.text));
-            }
-          }
-          controller.close();
-        } catch (error: any) {
-          console.error("Stream reader error:", error);
-          controller.enqueue(new TextEncoder().encode(`\n[Error] ${error.message}`));
-          controller.close();
+    const response = await client.models.generateContent({
+      model,
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType: "image/jpeg", data: image } }
+          ]
         }
-      },
+      ],
+      config: {
+        systemInstruction: systemInstruction || undefined,
+        responseMimeType: responseMimeType as any,
+        responseSchema: responseSchema || undefined,
+        maxOutputTokens: 8192
+      }
     });
 
-    return new Response(stream, {
-        headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "Transfer-Encoding": "chunked",
-            "Cache-Control": "no-cache"
-        }
-    });
+    if (type === "stream") {
+      return new Response(JSON.stringify({ text: response.text }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    } else {
+      return new Response(response.text, {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
   } catch (error: any) {
     console.error("Gemini Error:", error);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });

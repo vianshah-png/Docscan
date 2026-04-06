@@ -13,15 +13,14 @@ export async function findNearbyPharmacies(lat: number, lng: number): Promise<Ph
       throw new Error(`Failed to fetch pharmacies: ${response.statusText}`);
     }
 
-    const fullText = await readStreamToString(response);
-    return JSON.parse(fullText || "[]") as Pharmacy[];
+    return await response.json() as Pharmacy[];
   } catch (error) {
     console.error("Pharmacy search failed:", error);
     return [];
   }
 }
 
-export async function* analyzePrescriptionStream(base64Image: string) {
+export async function analyzePrescriptionStream(base64Image: string): Promise<string> {
   try {
     const response = await fetch("/api/analyze", {
       method: "POST",
@@ -33,40 +32,16 @@ export async function* analyzePrescriptionStream(base64Image: string) {
     });
 
     if (!response.ok) {
-      throw new Error(`Streaming failed: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`OCR failed: ${response.statusText} - ${errorText}`);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("No reader available");
-
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      yield decoder.decode(value, { stream: true });
-    }
+    const result = await response.json();
+    return result.text || "";
   } catch (error) {
-    console.error("Streaming analysis failed:", error);
-    yield "Error: Failed to stream OCR data.";
+    console.error("Analysis failed:", error);
+    return "Error: Failed to fetch OCR data.";
   }
-}
-
-async function readStreamToString(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("No reader available");
-
-  const decoder = new TextDecoder();
-  let result = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    
-    const chunk = decoder.decode(value, { stream: true });
-    // Filter out system messages (heartbeats) that start with [
-    const cleanLines = chunk.split('\n').filter(line => !line.trim().startsWith('[')).join('\n');
-    result += cleanLines;
-  }
-  return result;
 }
 
 export async function deepAuditPrescription(base64Image: string, initialOcrText: string): Promise<PrescriptionAnalysis> {
@@ -86,8 +61,7 @@ export async function deepAuditPrescription(base64Image: string, initialOcrText:
       throw new Error(`Audit failed: ${response.statusText} - ${errorText}`);
     }
 
-    const fullText = await readStreamToString(response);
-    const result = robustParseJson(fullText, {});
+    const result = await response.json();
     
     return {
       patientName: result.patientName || "Unknown",
