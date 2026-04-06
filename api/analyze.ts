@@ -12,8 +12,8 @@ export default async function handler(req: Request) {
     return new Response(JSON.stringify({ error: "API Key Not Found" }), { status: 500 });
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-2.5-flash";
+  const genAI = new GoogleGenAI(apiKey);
+  const modelName = "gemini-2.5-flash"; // User insists on this model
 
   try {
     let prompt = "";
@@ -56,44 +56,44 @@ export default async function handler(req: Request) {
 
       responseMimeType = "application/json";
       responseSchema = {
-        type: "OBJECT",
+        type: "object",
         properties: {
-          patientName: { type: "STRING" },
-          doctorName: { type: "STRING" },
-          doctorContact: { type: "STRING" },
-          clinicName: { type: "STRING" },
-          date: { type: "STRING" },
+          patientName: { type: "string" },
+          doctorName: { type: "string" },
+          doctorContact: { type: "string" },
+          clinicName: { type: "string" },
+          date: { type: "string" },
           medications: {
-            type: "ARRAY",
+            type: "array",
             items: {
-              type: "OBJECT",
+              type: "object",
               properties: {
-                drugName: { type: "STRING" },
-                dosage: { type: "STRING" },
-                frequency: { type: "STRING" },
-                confidence: { type: "NUMBER" },
-                activeIngredients: { type: "ARRAY", items: { type: "STRING" } },
+                drugName: { type: "string" },
+                dosage: { type: "string" },
+                frequency: { type: "string" },
+                confidence: { type: "number" },
+                activeIngredients: { type: "array", items: { type: "string" } },
                 alternatives: {
-                  type: "ARRAY",
+                  type: "array",
                   items: {
-                    type: "OBJECT",
+                    type: "object",
                     properties: {
-                      brandName: { type: "STRING" },
-                      manufacturer: { type: "STRING" },
-                      form: { type: "STRING" },
-                      strength: { type: "STRING" },
-                      isGeneric: { type: "BOOLEAN" }
+                      brandName: { type: "string" },
+                      manufacturer: { type: "string" },
+                      form: { type: "string" },
+                      strength: { type: "string" },
+                      isGeneric: { type: "boolean" }
                     }
                   }
                 },
-                safetyWarnings: { type: "ARRAY", items: { type: "STRING" } }
+                safetyWarnings: { type: "array", items: { type: "string" } }
               },
               required: ["drugName", "dosage", "frequency"]
             }
           },
-          overallConfidence: { type: "NUMBER" },
-          overallSafetyWarnings: { type: "ARRAY", items: { type: "STRING" } },
-          interactionRisks: { type: "ARRAY", items: { type: "STRING" } }
+          overallConfidence: { type: "number" },
+          overallSafetyWarnings: { type: "array", items: { type: "string" } },
+          interactionRisks: { type: "array", items: { type: "string" } }
         },
         required: ["medications"]
       };
@@ -101,20 +101,24 @@ export default async function handler(req: Request) {
       return new Response(JSON.stringify({ error: "Invalid Type" }), { status: 400 });
     }
 
-    const responseStream = await ai.models.generateContentStream({
-      model,
+    const model = genAI.getGenerativeModel({ 
+        model: modelName,
+        systemInstruction: systemInstruction || undefined
+    });
+
+    const responseStream = await model.generateContentStream({
       contents: [
         {
+          role: "user",
           parts: [
             { text: prompt },
             { inlineData: { mimeType: "image/jpeg", data: image } }
           ]
         }
       ],
-      config: {
-        systemInstruction,
-        responseMimeType,
-        responseSchema,
+      generationConfig: {
+        responseMimeType: responseMimeType as any,
+        responseSchema: responseSchema || undefined,
         maxOutputTokens: 8192
       }
     });
@@ -122,9 +126,9 @@ export default async function handler(req: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of responseStream) {
-            if (chunk.text) {
-              controller.enqueue(new TextEncoder().encode(chunk.text));
+          for await (const chunk of responseStream.stream) {
+            if (chunk.text()) {
+              controller.enqueue(new TextEncoder().encode(chunk.text()));
             }
           }
           controller.close();
@@ -137,7 +141,7 @@ export default async function handler(req: Request) {
 
     return new Response(stream, {
         headers: {
-            "Content-Type": "application/octet-stream", // Use octet-stream for generic streaming data
+            "Content-Type": "application/octet-stream",
             "Transfer-Encoding": "chunked",
             "Cache-Control": "no-cache"
         }

@@ -12,25 +12,29 @@ export default async function handler(req: Request) {
     return new Response(JSON.stringify({ error: "API Key Not Found" }), { status: 500 });
   }
 
-  const ai = new GoogleGenAI({ apiKey });
-  const model = "gemini-2.5-flash";
+  const genAI = new GoogleGenAI(apiKey);
+  const modelName = "gemini-2.5-flash";
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: `Find 5 nearby pharmacies near latitude ${lat}, longitude ${lng}. For each, provide their name, full address, rating, phone number (with country code), distance from this location, and official contact email if available.`,
-      config: {
-        tools: [{ googleSearch: {} }]
-      }
+    const modelWithTools = genAI.getGenerativeModel({
+      model: modelName,
+      tools: [{ googleSearch: {} }] as any
     });
 
-    const textResponse = response.text;
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    const response = await modelWithTools.generateContent(`Find 5 nearby pharmacies near latitude ${lat}, longitude ${lng}. For each, provide their name, full address, rating, phone number (with country code), distance from this location, and official contact email if available.`);
 
-    const jsonStream = await ai.models.generateContentStream({
-      model,
+    const textResponse = response.response.text();
+    const groundingMetadata = response.response.candidates?.[0]?.groundingMetadata;
+
+    const structuredModel = genAI.getGenerativeModel({
+      model: modelName
+    });
+
+    const jsonStream = await structuredModel.generateContentStream({
       contents: [
-        { text: `Based on the following information about nearby pharmacies, provide a JSON list of the top 5 pharmacies. 
+        { 
+          role: "user",
+          parts: [{ text: `Based on the following information about nearby pharmacies, provide a JSON list of the top 5 pharmacies. 
         Include name, address, distance (as a string like "0.5 km"), rating (number), phone (string with country code), email (string, or null if not found).
         
         For mapsUrl, generate a direct Google Maps search link using this format: 
@@ -42,9 +46,9 @@ export default async function handler(req: Request) {
         ${textResponse}
         
         Metadata:
-        ${JSON.stringify(groundingMetadata)}` }
+        ${JSON.stringify(groundingMetadata)}` }] }
       ],
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -68,9 +72,9 @@ export default async function handler(req: Request) {
 
     const stream = new ReadableStream({
         async start(controller) {
-          for await (const chunk of jsonStream) {
-            if (chunk.text) {
-              controller.enqueue(new TextEncoder().encode(chunk.text));
+          for await (const chunk of jsonStream.stream) {
+            if (chunk.text()) {
+              controller.enqueue(new TextEncoder().encode(chunk.text()));
             }
           }
           controller.close();
