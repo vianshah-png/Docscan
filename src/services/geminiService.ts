@@ -1,6 +1,29 @@
 import { PrescriptionAnalysis, Pharmacy } from "../types";
 import { robustParseJson } from "../lib/jsonUtils";
 
+async function readStreamToString(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const text = await response.text();
+    return text;
+  }
+
+  const textDecoder = new TextDecoder();
+  let result = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    
+    const chunk = textDecoder.decode(value, { stream: true });
+    // Filter out heartbeat messages: ignore lines starting with [System]
+    const cleanLines = chunk.split('\n')
+      .filter(line => !line.trim().startsWith('[System]'))
+      .join('\n');
+    result += cleanLines;
+  }
+  return result;
+}
+
 export async function findNearbyPharmacies(lat: number, lng: number): Promise<Pharmacy[]> {
   try {
     const response = await fetch("/api/pharmacies", {
@@ -13,7 +36,8 @@ export async function findNearbyPharmacies(lat: number, lng: number): Promise<Ph
       throw new Error(`Failed to fetch pharmacies: ${response.statusText}`);
     }
 
-    return await response.json() as Pharmacy[];
+    const fullText = await readStreamToString(response);
+    return JSON.parse(fullText.trim() || "[]") as Pharmacy[];
   } catch (error) {
     console.error("Pharmacy search failed:", error);
     return [];
@@ -36,8 +60,8 @@ export async function analyzePrescriptionStream(base64Image: string): Promise<st
       throw new Error(`OCR failed: ${response.statusText} - ${errorText}`);
     }
 
-    const result = await response.json();
-    return result.text || "";
+    const fullText = await readStreamToString(response);
+    return fullText.trim();
   } catch (error) {
     console.error("Analysis failed:", error);
     return "Error: Failed to fetch OCR data.";
@@ -61,14 +85,15 @@ export async function deepAuditPrescription(base64Image: string, initialOcrText:
       throw new Error(`Audit failed: ${response.statusText} - ${errorText}`);
     }
 
-    const result = await response.json();
+    const fullText = await readStreamToString(response);
+    const result = JSON.parse(fullText.trim() || "{}");
     
     return {
       patientName: result.patientName || "Unknown",
-      doctorName: result.doctorName || "Unknown",
-      doctorContact: result.doctorContact || "Not specified",
-      clinicName: result.clinicName || "Unknown",
-      date: result.date || "Not specified",
+      doctorName: result.doctorName || "Not Specified",
+      doctorContact: result.doctorContact || "Not Specified",
+      clinicName: result.clinicName || "Unknown Clinic",
+      date: result.date || "Not Specified",
       medications: (result.medications || []).map((med: any) => ({
         drugName: med.drugName || "Unknown",
         dosage: med.dosage || "Not specified",

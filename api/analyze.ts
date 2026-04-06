@@ -16,116 +16,74 @@ export default async function handler(req: Request) {
     const client = new GoogleGenAI({ apiKey });
     const model = "gemini-2.5-flash";
 
-    let prompt = "";
-    let systemInstruction = "";
-    let responseMimeType = "text/plain";
-    let responseSchema: any = undefined;
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // 🚀 MAKESHIFT 504 BYPASS: Send an immediate heartbeat to keep Vercel gateway alive
+          controller.enqueue(encoder.encode("[System] Connection Established. Starting Analysis... (504 Bypass)\n"));
 
-    if (type === "stream") {
-      prompt = `
-        Perform a high-fidelity OCR scan of this medical prescription. 
-        1. DECIPHER HANDWRITING: Carefully read every word.
-        2. LIST EVERYTHING: Patient details, Doctor details, Clinic info, and every single Medication with its dosage and frequency.
-        3. BE PRECISE: If a word is unclear, provide your best clinical guess based on common medical terms.
-        
-        Output raw text as you read it. Be extremely detailed.
-      `;
-    } else if (type === "audit") {
-      systemInstruction = `
-        You are a Senior Medical Audit Specialist. 
-        Your task is to take the initial OCR results of a prescription and perform a deep clinical audit.
-        
-        1. VERIFY MEDICATIONS: Use your medical reasoning to analyze brands (especially Indian brands like Rozad, Ambulax, Petril Plus, Placida).
-        2. CORRECT ERRORS: If the OCR text is clearly wrong (e.g. 'Rozad-10' interpreted as 'Road'), correct it to the MEDICALLY SOUND entry.
-        3. NO MISSING DATA: You MUST identify every single medication. If a word is partially legible, use context and common clinical combos to make a strong assumption.
-        4. ENRICH DATA: Identify active ingredients and generic alternatives.
-        5. STRUCTURE: Output a valid JSON object.
-        
-        Note for the LLM: Please respond within 5-7 seconds to avoid a server timeout. Keep the JSON concise.
-      `;
+          let prompt = "";
+          let systemInstruction = "";
+          let responseMimeType = "text/plain";
+          let responseSchema: any = undefined;
 
-      prompt = `
-        Initial OCR Text:
-        ${ocrText}
-        
-        Image Context: (Provided as image)
-        
-        Perform a deep audit of the medications found in the OCR text and the image. 
-        Ensure NO medication is missed. If something looks like a medication but is unclear, use your medical knowledge to identify the most likely candidate.
-      `;
-
-      responseMimeType = "application/json";
-      responseSchema = {
-        type: "object",
-        properties: {
-          patientName: { type: "string" },
-          doctorName: { type: "string" },
-          doctorContact: { type: "string" },
-          clinicName: { type: "string" },
-          date: { type: "string" },
-          medications: {
-            type: "array",
-            items: {
+          if (type === "stream") {
+            prompt = `Perform high-fidelity OCR scan. Decipher every word. List medications and patient info.`;
+          } else if (type === "audit") {
+            systemInstruction = `Senior Medical Audit Specialist. Audit Indian brands. Output JSON.`;
+            prompt = `Initial OCR Text: ${ocrText}. Analyze medications in the image. Return JSON.`;
+            responseMimeType = "application/json";
+            responseSchema = {
               type: "object",
               properties: {
-                drugName: { type: "string" },
-                dosage: { type: "string" },
-                frequency: { type: "string" },
-                confidence: { type: "number" },
-                activeIngredients: { type: "array", items: { type: "string" } },
-                alternatives: {
+                patientName: { type: "string" },
+                medications: {
                   type: "array",
                   items: {
                     type: "object",
                     properties: {
-                      brandName: { type: "string" },
-                      manufacturer: { type: "string" },
-                      form: { type: "string" },
-                      strength: { type: "string" },
-                      isGeneric: { type: "boolean" }
-                    }
+                      drugName: { type: "string" },
+                      dosage: { type: "string" },
+                      frequency: { type: "string" }
+                    },
+                    required: ["drugName", "dosage"]
                   }
-                },
-                safetyWarnings: { type: "array", items: { type: "string" } }
+                }
               },
-              required: ["drugName", "dosage", "frequency"]
-            }
-          },
-          overallConfidence: { type: "number" },
-          overallSafetyWarnings: { type: "array", items: { type: "string" } },
-          interactionRisks: { type: "array", items: { type: "string" } }
-        },
-        required: ["medications"]
-      };
-    }
+              required: ["medications"]
+            };
+          }
 
-    const response = await client.models.generateContent({
-      model,
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: "image/jpeg", data: image } }
-          ]
+          const response = await client.models.generateContent({
+            model,
+            contents: [
+              { parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: image } }] }
+            ],
+            config: {
+              systemInstruction: systemInstruction || undefined,
+              responseMimeType: responseMimeType as any,
+              responseSchema: responseSchema || undefined,
+              maxOutputTokens: 2048
+            }
+          });
+
+          controller.enqueue(encoder.encode(response.text));
+          controller.close();
+        } catch (err: any) {
+          controller.enqueue(encoder.encode(`\n[Error] ${err.message}`));
+          controller.close();
         }
-      ],
-      config: {
-        systemInstruction: systemInstruction || undefined,
-        responseMimeType: responseMimeType as any,
-        responseSchema: responseSchema || undefined,
-        maxOutputTokens: 8192
       }
     });
 
-    if (type === "stream") {
-      return new Response(JSON.stringify({ text: response.text }), {
-        headers: { "Content-Type": "application/json" }
-      });
-    } else {
-      return new Response(response.text, {
-        headers: { "Content-Type": "application/json" }
-      });
-    }
+    return new Response(stream, {
+        headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Transfer-Encoding": "chunked",
+            "X-Vercel-Bypass": "504-Heartbeat"
+        }
+    });
 
   } catch (error: any) {
     console.error("Gemini Error:", error);

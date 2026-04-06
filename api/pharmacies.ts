@@ -14,48 +14,55 @@ export default async function handler(req: Request) {
     }
 
     const client = new GoogleGenAI({ apiKey });
-    const modelName = "gemini-2.5-flash"; // Still using the user's preferred model
+    const modelName = "gemini-2.5-flash";
 
-    // 1. Single efficient call to find and format pharmacies in one go
-    const response = await client.models.generateContent({
-      model: modelName,
-      contents: `Find the 4 nearest chemists/pharmacies around latitude ${lat}, longitude ${lng} using Google Search.
-      IMPORTANT: Immediately return the data as a JSON array of objects. 
-      Do NOT provide any text before or after the JSON.
-      
-      Fields per pharmacy:
-      - name: The pharmacy name
-      - address: The full address
-      - distance: Estimated distance (e.g. "0.5 km")
-      - rating: Number
-      - phone: Phone number with country code (e.g. +91...)
-      - mapsUrl: Direct Google Maps search link: 'https://www.google.com/maps/search/?api=1&query=PHARMACY_NAME+ADDRESS' (with + for spaces)
-      - isOpen: Boolean
-      `,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              address: { type: "string" },
-              distance: { type: "string" },
-              rating: { type: "number" },
-              phone: { type: "string" },
-              mapsUrl: { type: "string" },
-              isOpen: { type: "boolean" }
-            },
-            required: ["name", "address", "distance", "mapsUrl"]
-          }
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // 🚀 MAKESHIFT 504 BYPASS: Send heartbeat immediately
+          controller.enqueue(encoder.encode("[System] Connection Established. Accessing GPS & Pharmacy Databases. (504 Bypass)\n"));
+
+          const response = await client.models.generateContent({
+            model: modelName,
+            contents: `Find the 4 nearest chemists/pharmacies around latitude ${lat}, longitude ${lng} using Google Search. Return JSON.`,
+            config: {
+              tools: [{ googleSearch: {} }],
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    address: { type: "string" },
+                    distance: { type: "string" },
+                    rating: { type: "number" },
+                    phone: { type: "string" },
+                    mapsUrl: { type: "string" },
+                    isOpen: { type: "boolean" }
+                  },
+                  required: ["name", "address", "distance", "mapsUrl"]
+                }
+              }
+            }
+          });
+
+          controller.enqueue(encoder.encode(response.text));
+          controller.close();
+        } catch (err: any) {
+          controller.enqueue(encoder.encode(`\n[Error] ${err.message}`));
+          controller.close();
         }
       }
     });
 
-    return new Response(response.text, {
-      headers: { "Content-Type": "application/json" }
+    return new Response(stream, {
+        headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Transfer-Encoding": "chunked",
+            "X-Vercel-Bypass": "504-Heartbeat"
+        }
     });
 
   } catch (error: any) {
