@@ -1,9 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-export const config = {
-  runtime: "edge",
-};
-
 export default async function handler(req: Request) {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method Not Allowed" }), { status: 405 });
@@ -31,7 +27,7 @@ export default async function handler(req: Request) {
     const textResponse = response.text;
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
 
-    const jsonResponse = await ai.models.generateContent({
+    const jsonStream = await ai.models.generateContentStream({
       model,
       contents: [
         { text: `Based on the following information about nearby pharmacies, provide a JSON list of the top 5 pharmacies. 
@@ -70,8 +66,22 @@ export default async function handler(req: Request) {
       }
     });
 
-    return new Response(jsonResponse.text, {
-      headers: { "Content-Type": "application/json" },
+    const stream = new ReadableStream({
+        async start(controller) {
+          for await (const chunk of jsonStream) {
+            if (chunk.text) {
+              controller.enqueue(new TextEncoder().encode(chunk.text));
+            }
+          }
+          controller.close();
+        },
+      });
+
+    return new Response(stream, {
+        headers: {
+            "Content-Type": "application/octet-stream",
+            "Transfer-Encoding": "chunked"
+        }
     });
   } catch (error: any) {
     console.error("Gemini Pharmacy Error:", error);

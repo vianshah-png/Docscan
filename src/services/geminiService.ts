@@ -13,7 +13,8 @@ export async function findNearbyPharmacies(lat: number, lng: number): Promise<Ph
       throw new Error(`Failed to fetch pharmacies: ${response.statusText}`);
     }
 
-    return await response.json();
+    const fullText = await readStreamToString(response);
+    return JSON.parse(fullText || "[]") as Pharmacy[];
   } catch (error) {
     console.error("Pharmacy search failed:", error);
     return [];
@@ -50,6 +51,20 @@ export async function* analyzePrescriptionStream(base64Image: string) {
   }
 }
 
+async function readStreamToString(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No reader available");
+
+  const decoder = new TextDecoder();
+  let result = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    result += decoder.decode(value, { stream: true });
+  }
+  return result;
+}
+
 export async function deepAuditPrescription(base64Image: string, initialOcrText: string): Promise<PrescriptionAnalysis> {
   try {
     const response = await fetch("/api/analyze", {
@@ -63,10 +78,12 @@ export async function deepAuditPrescription(base64Image: string, initialOcrText:
     });
 
     if (!response.ok) {
-      throw new Error(`Audit failed: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Audit failed: ${response.statusText} - ${errorText}`);
     }
 
-    const result = await response.json();
+    const fullText = await readStreamToString(response);
+    const result = robustParseJson(fullText, {});
     
     return {
       patientName: result.patientName || "Unknown",
