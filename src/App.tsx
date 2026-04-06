@@ -220,8 +220,7 @@ export default function App() {
       setStep('completed');
       setViewMode('analysis');
 
-      // Start pharmacy search only after analysis is complete and displayed
-      handleFindPharmacies();
+      // User will manually trigger pharmacy search via the 'Find Nearby Chemists' button.
       
       const totalTime = ((performance.now() - startTime) / 1000).toFixed(2);
       console.log(`[SYSTEM LOG] Total Optimized Processing Time: ${totalTime}s`);
