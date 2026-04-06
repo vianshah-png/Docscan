@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 export default async function handler(req: Request) {
   if (req.method !== "POST") {
@@ -12,78 +12,88 @@ export default async function handler(req: Request) {
     return new Response(JSON.stringify({ error: "API Key Not Found" }), { status: 500 });
   }
 
-  const genAI = new GoogleGenAI(apiKey);
-  const modelName = "gemini-2.5-flash";
-
   try {
-    const modelWithTools = genAI.getGenerativeModel({
-      model: modelName,
-      tools: [{ googleSearch: {} }] as any
-    });
-
-    const response = await modelWithTools.generateContent(`Find 5 nearby pharmacies near latitude ${lat}, longitude ${lng}. For each, provide their name, full address, rating, phone number (with country code), distance from this location, and official contact email if available.`);
-
-    const textResponse = response.response.text();
-    const groundingMetadata = response.response.candidates?.[0]?.groundingMetadata;
-
-    const structuredModel = genAI.getGenerativeModel({
-      model: modelName
-    });
-
-    const jsonStream = await structuredModel.generateContentStream({
-      contents: [
-        { 
-          role: "user",
-          parts: [{ text: `Based on the following information about nearby pharmacies, provide a JSON list of the top 5 pharmacies. 
-        Include name, address, distance (as a string like "0.5 km"), rating (number), phone (string with country code), email (string, or null if not found).
-        
-        For mapsUrl, generate a direct Google Maps search link using this format: 
-        'https://www.google.com/maps/search/?api=1&query=PHARMACY_NAME+ADDRESS' (replacing spaces with +).
-        
-        Verify phone numbers from the metadata to ensure accuracy.
-        
-        Information:
-        ${textResponse}
-        
-        Metadata:
-        ${JSON.stringify(groundingMetadata)}` }] }
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              address: { type: Type.STRING },
-              distance: { type: Type.STRING },
-              rating: { type: Type.NUMBER },
-              phone: { type: Type.STRING },
-              email: { type: Type.STRING },
-              mapsUrl: { type: Type.STRING },
-              isOpen: { type: Type.BOOLEAN }
-            },
-            required: ["name", "address", "distance", "mapsUrl"]
-          }
-        }
-      }
-    });
-
     const stream = new ReadableStream({
-        async start(controller) {
-          for await (const chunk of jsonStream.stream) {
-            if (chunk.text()) {
-              controller.enqueue(new TextEncoder().encode(chunk.text()));
+      async start(controller) {
+        try {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode("[System] Locating nearby pharmacies and verifying details...\n"));
+
+          const client = new GoogleGenAI({ apiKey });
+          const modelName = "gemini-2.5-flash";
+
+          const response = await client.models.generateContent({
+            model: modelName,
+            contents: `Find 5 nearby pharmacies near latitude ${lat}, longitude ${lng}. For each, provide their name, full address, rating, phone number (with country code), distance from this location, and official contact email if available.`,
+            config: {
+              tools: [{ googleSearch: {} }]
+            }
+          });
+
+          const textResponse = response.text;
+          const candidates = (response.candidates as any);
+          const groundingMetadata = candidates?.[0]?.groundingMetadata;
+
+          const jsonStream = await client.models.generateContentStream({
+            model: modelName,
+            contents: [
+              { 
+                role: "user",
+                parts: [{ text: `Based on the following information about nearby pharmacies, provide a JSON list of the top 5 pharmacies. 
+              Only output valid JSON.
+              
+              Include name, address, distance (as a string like "0.5 km"), rating (number), phone (string with country code), email (string, or null if not found).
+              
+              For mapsUrl, generate a direct Google Maps search link using this format: 
+              'https://www.google.com/maps/search/?api=1&query=PHARMACY_NAME+ADDRESS' (replacing spaces with +).
+              
+              Verify phone numbers from the metadata to ensure accuracy.
+              
+              Information:
+              ${textResponse}
+              
+              Metadata:
+              ${JSON.stringify(groundingMetadata)}` }] }
+            ],
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    address: { type: "string" },
+                    distance: { type: "string" },
+                    rating: { type: "number" },
+                    phone: { type: "string" },
+                    email: { type: "string" },
+                    mapsUrl: { type: "string" },
+                    isOpen: { type: "boolean" }
+                  },
+                  required: ["name", "address", "distance", "mapsUrl"]
+                }
+              }
+            }
+          });
+
+          for await (const chunk of jsonStream) {
+            if (chunk.text) {
+              controller.enqueue(encoder.encode(chunk.text));
             }
           }
           controller.close();
-        },
-      });
+        } catch (error: any) {
+          console.error("Gemini Pharmacy Error:", error);
+          controller.enqueue(new TextEncoder().encode(`\n[Error] ${error.message}`));
+          controller.close();
+        }
+      },
+    });
 
     return new Response(stream, {
         headers: {
-            "Content-Type": "application/octet-stream",
+            "Content-Type": "text/plain; charset=utf-8",
             "Transfer-Encoding": "chunked"
         }
     });

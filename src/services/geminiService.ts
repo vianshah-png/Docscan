@@ -60,7 +60,11 @@ async function readStreamToString(response: Response): Promise<string> {
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    result += decoder.decode(value, { stream: true });
+    
+    const chunk = decoder.decode(value, { stream: true });
+    // Filter out system messages (heartbeats) that start with [
+    const cleanLines = chunk.split('\n').filter(line => !line.trim().startsWith('[')).join('\n');
+    result += cleanLines;
   }
   return result;
 }
