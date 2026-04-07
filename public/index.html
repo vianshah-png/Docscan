@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RxLens - AI Prescription Interpreter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --danger: #ef4444;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-icon {
+      background: var(--primary);
+      color: white;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 600; }
+
+    /* Upload Area */
+    .upload-container {
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: 1rem;
+      padding: 4rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 2rem;
+    }
+
+    .upload-container:hover {
+      border-color: var(--primary);
+      background: #eff6ff;
+    }
+
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
+    .btn:hover { background: var(--primary-hover); color: white;}
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Loader */
+    .loader {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    .loading-status {
+      text-align: center;
+      padding: 2rem;
+      background: var(--surface);
+      border-radius: 1rem;
+      box-shadow: var(--shadow);
+    }
+
+    .status-log {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #1e293b;
+      color: #34d399;
+      font-family: monospace;
+      border-radius: 0.5rem;
+      text-align: left;
+      height: 150px;
+      overflow-y: auto;
+      font-size: 0.875rem;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.5rem;
+    }
+
+    .tab {
+      padding: 0.75rem 1.5rem;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    
+    .tab.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.5rem;
+    }
+
+    .card h3 {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Meds */
+    .med-item {
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .med-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .med-name { font-size: 1.2rem; font-weight: 600; color: var(--primary); }
+    .badge {
+      font-size: 0.75rem; padding: 0.25rem 0.5rem;
+      border-radius: 1rem; font-weight: 600;
+      background: #dcfce7; color: #166534;
+    }
+
+    .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem; font-size: 0.9rem; }
+    .warning-box { margin-top: 1rem; padding: 0.75rem; background: #fffbeb; color: #b45309; border-radius: 0.5rem; font-size: 0.9rem; }
+
+    .pill-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+    .pill { background: #f1f5f9; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.8rem; }
+
+    /* Pharmacy List */
+    .pharmacy-card {
+      border: 1px solid var(--border);
+      padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; transition: border 0.2s;
+    }
+    .pharmacy-card:hover { border-color: var(--primary); }
+    .pharmacy-name { font-weight: 600; margin-bottom: 0.25rem; font-size:1.1rem;}
+    .pharmacy-dist { font-size: 0.8rem; color: var(--primary); float: right; font-weight:bold;}
+    .pharmacy-addr { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .action-links { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .action-links a {
+      font-size: 0.8rem; text-decoration: none; padding: 0.5rem 0.75rem;
+      border-radius: 0.25rem; background: #f1f5f9; color: var(--text); font-weight:bold;
+    }
+    .action-links a:hover { background: #e2e8f0; }
+
+    img#previewImg { max-width: 100%; border-radius: 0.5rem; }
+
+    /* Two colon layout for audit */
+    .audit-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 2rem;
+    }
+    @media (max-width: 768px) {
+      .audit-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div class="logo-icon">Rx</div>
+      <h1>RxLens</h1>
+    </header>
+
+    <!-- Upload Area -->
+    <div id="uploadArea" class="upload-container" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size: 3rem; margin-bottom: 1rem;">📸</div>
+      <h2>Upload Prescription</h2>
+      <p style="color: var(--text-muted); margin-top: 0.5rem;">Click to select or drag and drop an image</p>
+      <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleImage(this)">
+    </div>
+
+    <!-- Canvas for Image Compression -->
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <!-- Loading Area -->
+    <div id="loadingArea" class="loading-status" style="display:none;">
+      <div class="loader"></div>
+      <h3 style="margin-top: 1rem;" id="loadingText">Scanning Document...</h3>
+      <div id="statusLog" class="status-log"></div>
+    </div>
+
+    <!-- Results Area (Hidden initially) -->
+    <div id="resultsArea" style="display:none;">
+      
+      <!-- Tab Navigation -->
+      <div class="tabs">
+        <div class="tab active" data-target="tab-ocr" onclick="switchTab('tab-ocr')">Raw OCR Scan</div>
+        <div class="tab disabled" id="tabNavAudit" data-target="tab-audit" onclick="switchTab('tab-audit')">Deep Medical Audit</div>
+        <div class="tab disabled" id="tabNavChemists" data-target="tab-chemists" onclick="switchTab('tab-chemists')">Chemists Nearby</div>
+      </div>
+
+      <!-- TAB 1: OCR -->
+      <div id="tab-ocr" class="tab-content active">
+        <div class="card">
+          <h3>📝 Raw Extracted Text</h3>
+          <p id="ocrResult" style="white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; color: var(--text-muted); background: #f8fafc; padding: 1rem; border-radius: 0.5rem; min-height: 200px;"></p>
+        </div>
+      </div>
+
+      <!-- TAB 2: Deep Audit -->
+      <div id="tab-audit" class="tab-content">
+        <div id="auditLoader" style="padding: 3rem; text-align: center; background: var(--surface); border-radius: 1rem; box-shadow: var(--shadow);">
+          <div class="loader"></div>
+          <div style="margin-top: 1rem; color: var(--text-muted);">Running AI Clinical Audit in background...</div>
+        </div>
+
+        <div id="auditContent" class="audit-grid" style="display:none;">
+          <div>
+            <div class="card" id="patientInfoCard">
+              <h3 id="clinicName">Clinic Info</h3>
+              <div style="display: flex; gap: 2rem; font-size: 0.9rem; color: var(--text-muted);">
+                <div><strong>Patient:</strong> <span id="valPatient">-</span></div>
+                <div><strong>Doctor:</strong> <span id="valDoctor">-</span></div>
+                <div><strong>Date:</strong> <span id="valDate">-</span></div>
+              </div>
+            </div>
+
+            <div id="overallWarnings" class="warning-box" style="display:none; margin-bottom: 1.5rem; background: #fef2f2; color: #b91c1c;">
+              <strong>Critical Alerts:</strong>
+              <ul id="warningsList" style="margin-left: 1.5rem; margin-top: 0.5rem;"></ul>
+            </div>
+
+            <div class="card">
+              <h3>💊 Medications Log</h3>
+              <div id="medicationsList"></div>
+            </div>
+          </div>
+          <div>
+            <div class="card">
+              <h3>Original Document</h3>
+              <img id="previewImg" src="" alt="Prescription preview">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: Chemists -->
+      <div id="tab-chemists" class="tab-content">
+        <div class="card" style="text-align: center; padding: 3rem;" id="chemistPrompt">
+          <div style="font-size: 3rem; margin-bottom: 1rem;">📍</div>
+          <h3>Find Chemists Nearby</h3>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Allow location access to discover pharmacies around you and easily check medication availability via WhatsApp or SMS.</p>
+          <button class="btn" onclick="findPharmacies()">Search Location</button>
+        </div>
+
+        <div id="pharmacyLoader" style="display:none; text-align:center; padding:3rem; background: var(--surface); border-radius: 1rem; box-shadow: var(--shadow);">
+          <div class="loader"></div>
+          <div style="margin-top: 1rem; color: var(--text-muted);">Locating Pharmacies...</div>
+        </div>
+        
+        <div id="pharmacyList" style="max-width: 800px; margin: 0 auto;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
