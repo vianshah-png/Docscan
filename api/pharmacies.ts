@@ -23,11 +23,26 @@ export default async function handler(req: Request) {
           // 🚀 MAKESHIFT 504 BYPASS: Send heartbeat immediately
           controller.enqueue(encoder.encode("[System] Connection Established. Accessing GPS & Pharmacy Databases. (504 Bypass)\n"));
 
-          const response = await client.models.generateContent({
+          // 1. Search (Text output)
+          const searchResponse = await client.models.generateContent({
             model: modelName,
-            contents: `Find the 4 nearest chemists/pharmacies around latitude ${lat}, longitude ${lng} using Google Search. Return JSON.`,
+            contents: `Find the 4 nearest chemists/pharmacies around latitude ${lat}, longitude ${lng} using Google Search.`,
+            config: { tools: [{ googleSearch: {} }] }
+          });
+
+          // 2. Format (JSON output)
+          const finalResponse = await client.models.generateContent({
+            model: modelName,
+            contents: [
+              { 
+                role: "user",
+                parts: [{ text: `Based on this pharmacy info, provide a JSON list of the top 4. 
+                Fields: name, address, distance, rating, phone, mapsUrl, isOpen.
+                MapsUrl format: https://www.google.com/maps/search/?api=1&query=NAME+ADDRESS
+                Info: ${searchResponse.text}` }] 
+              }
+            ],
             config: {
-              tools: [{ googleSearch: {} }],
               responseMimeType: "application/json",
               responseSchema: {
                 type: "array",
@@ -48,7 +63,7 @@ export default async function handler(req: Request) {
             }
           });
 
-          controller.enqueue(encoder.encode(response.text));
+          controller.enqueue(encoder.encode(finalResponse.text));
           controller.close();
         } catch (err: any) {
           controller.enqueue(encoder.encode(`\n[Error] ${err.message}`));

@@ -16,7 +16,7 @@
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
-    "express": "^5.2.1",
+    "express": "^4.21.1",
     "lucide-react": "^0.479.0",
     "motion": "^12.4.10",
     "react": "^19.0.0",

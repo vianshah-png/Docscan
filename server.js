@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(compression());
@@ -35,11 +35,28 @@ async function handlePharmacies(req, res) {
     // Immediate heartbeat for Cloud Run/Vercel bypass
     res.write("[System] Connection Established. Accessing GPS & Pharmacy Databases. (Cloud Run Bypass)\n");
 
-    const response = await client.models.generateContent({
+    // 1. Search call (Text output)
+    const searchResponse = await client.models.generateContent({
       model: modelName,
-      contents: `Find the 4 nearest chemists/pharmacies around latitude ${lat}, longitude ${lng} using Google Search. Return JSON.`,
+      contents: `Find the 4 nearest chemists/pharmacies around latitude ${lat}, longitude ${lng} using Google Search.`,
       config: {
-        tools: [{ googleSearch: {} }],
+        tools: [{ googleSearch: {} }]
+      }
+    });
+
+    // 2. Format call (JSON output)
+    const finalResponse = await client.models.generateContent({
+      model: modelName,
+      contents: [
+        { 
+          role: "user",
+          parts: [{ text: `Based on this pharmacy info, provide a JSON list of the top 4. 
+          Fields: name, address, distance, rating, phone, mapsUrl, isOpen.
+          MapsUrl format: https://www.google.com/maps/search/?api=1&query=NAME+ADDRESS
+          Info: ${searchResponse.text}` }] 
+        }
+      ],
+      config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: "array",
@@ -60,7 +77,7 @@ async function handlePharmacies(req, res) {
       }
     });
 
-    res.write(response.text);
+    res.write(finalResponse.text);
     res.end();
   } catch (err) {
     console.error(err);
