@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "vite --port 3005",
+    "start": "node server.js",
     "dev": "vite --port 3005",
     "build": "vite build",
     "preview": "vite preview"
@@ -13,6 +13,10 @@
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.2.2",
     "clsx": "^2.1.1",
+    "compression": "^1.8.1",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
     "lucide-react": "^0.479.0",
     "motion": "^12.4.10",
     "react": "^19.0.0",
